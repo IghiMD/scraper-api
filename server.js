@@ -13,20 +13,21 @@ app.post("/scrape", async (req, res) => {
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle2" });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // Odklikni cookies, ak treba (príklad)
+    // Odklikni cookies
     try {
       await page.click("button[aria-label='Súhlasím']");
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(300);
     } catch (e) {}
 
     const data = await page.evaluate(() => {
-      const title = document.querySelector("h1")?.innerText || "";
-      const article = document.querySelector("article")?.innerText || ""; // môžeš doladiť
+      const title = document.querySelector("h1.main-title")?.innerText || "";
+      const paragraphs = Array.from(document.querySelectorAll(".main-article p"));
+      const content = paragraphs.map(p => p.innerText).join("\n\n");
       return {
         title: title.trim(),
-        content: article.trim()
+        content: content.trim()
       };
     });
 
@@ -39,5 +40,5 @@ app.post("/scrape", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 8080, () => {
-  console.log("✅ Server running");
+  console.log("✅ Server running on port 8080");
 });
