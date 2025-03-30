@@ -1,5 +1,5 @@
 const express = require("express");
-const chromium = require("chrome-aws-lambda"); // použije zabalený Chromium
+const chromium = require("chrome-aws-lambda");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -25,15 +25,13 @@ app.post("/scrape", async (req, res) => {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-    const content = await page.evaluate(() => {
-      return document.body.innerText;
-    });
-
+    const content = await page.evaluate(() => document.body.innerText);
     res.json({ url, content });
+
   } catch (error) {
     res.status(500).json({ error: error.toString() });
   } finally {
-    if (browser !== null) await browser.close();
+    if (browser) await browser.close();
   }
 });
 
