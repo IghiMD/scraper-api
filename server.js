@@ -1,36 +1,42 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
 const app = express();
+const PORT = process.env.PORT || 8080;
+
 app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Scraper API is running");
+});
 
 app.post("/scrape", async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "Missing URL" });
+  if (!url) return res.status(400).json({ error: "Missing URL in request body" });
 
   try {
     const browser = await puppeteer.launch({
       headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-
-    // Skús odkliknúť cookies, ak existujú
-    try {
-      await page.waitForSelector("button[aria-label='Súhlasím']", { timeout: 3000 });
-      await page.click("button[aria-label='Súhlasím']");
-      await page.waitForTimeout(1000);
-    } catch (e) {
-      // Žiadne cookies alebo už kliknuté
-    }
-
-    // Počkaj na hlavný článok
-    await page.waitForSelector("h1", { timeout: 10000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
     const data = await page.evaluate(() => {
-      const title = document.querySelector("h1")?.innerText || "";
-      const paragraphs = Array.from(document.querySelectorAll("article p"));
-      const content = paragraphs.map(p => p.innerText).join("\n\n");
+      const title =
+        document.querySelector("article h1, h1.article-title")?.innerText || document.title;
+
+      const article =
+        document.querySelector("article") || document.querySelector(".article-detail");
+
+      let content = "";
+      if (article) {
+        const paragraphs = Array.from(article.querySelectorAll("p"));
+        content = paragraphs
+          .map(p => p.innerText.trim())
+          .filter(text => text.length > 0)
+          .join("\n\n");
+      }
+
       return {
         title: title.trim(),
         content: content.trim()
@@ -39,12 +45,11 @@ app.post("/scrape", async (req, res) => {
 
     await browser.close();
     res.json({ url, ...data });
-  } catch (err) {
-    console.error("❌ Scraper error:", err);
-    res.status(500).json({ error: "Scraping error", details: err.message });
+  } catch (error) {
+    res.status(500).json({ error: error.toString() });
   }
 });
 
-app.listen(process.env.PORT || 8080, () => {
-  console.log("✅ Server running on port 8080");
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
