@@ -1,14 +1,7 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-
 const app = express();
-const PORT = process.env.PORT || 8080;
-
 app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Scraper API is running");
-});
 
 app.post("/scrape", async (req, res) => {
   const { url } = req.body;
@@ -20,17 +13,31 @@ app.post("/scrape", async (req, res) => {
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto(url, { waitUntil: "networkidle2" });
 
-    const content = await page.evaluate(() => document.body.innerText);
+    // Odklikni cookies, ak treba (príklad)
+    try {
+      await page.click("button[aria-label='Súhlasím']");
+      await page.waitForTimeout(500);
+    } catch (e) {}
+
+    const data = await page.evaluate(() => {
+      const title = document.querySelector("h1")?.innerText || "";
+      const article = document.querySelector("article")?.innerText || ""; // môžeš doladiť
+      return {
+        title: title.trim(),
+        content: article.trim()
+      };
+    });
 
     await browser.close();
-    res.json({ url, content });
-  } catch (error) {
-    res.status(500).json({ error: error.toString() });
+    res.json({ url, ...data });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Scraping error", details: err.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(process.env.PORT || 8080, () => {
+  console.log("✅ Server running");
 });
