@@ -11,42 +11,25 @@ app.get("/", (req, res) => {
 
 app.post("/scrape", async (req, res) => {
   const { url } = req.body;
-  if (!url) {
-    console.log("❌ URL not provided");
-    return res.status(400).json({ error: "Missing URL in request body" });
-  }
+  if (!url) return res.status(400).json({ error: "Missing URL in request body" });
 
-  console.log("➡️ Starting scrape for:", url);
-
-  let browser;
   try {
-    browser = await puppeteer.launch({
+    const browser = await puppeteer.launch({
       headless: "new",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      timeout: 60000,
     });
-
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-    const content = await page.evaluate(() => {
-      return document.body.innerText;
-    });
+    const content = await page.evaluate(() => document.body.innerText);
 
-    console.log("✅ Scrape successful");
-
+    await browser.close();
     res.json({ url, content });
   } catch (error) {
-    console.error("❌ Scrape failed:", error);
     res.status(500).json({ error: error.toString() });
-  } finally {
-    if (browser) {
-      await browser.close();
-      console.log("🧹 Browser closed");
-    }
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
