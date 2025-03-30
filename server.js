@@ -13,17 +13,23 @@ app.post("/scrape", async (req, res) => {
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // Odklikni cookies
+    // Skús odkliknúť cookies, ak existujú
     try {
+      await page.waitForSelector("button[aria-label='Súhlasím']", { timeout: 3000 });
       await page.click("button[aria-label='Súhlasím']");
-      await page.waitForTimeout(300);
-    } catch (e) {}
+      await page.waitForTimeout(1000);
+    } catch (e) {
+      // Žiadne cookies alebo už kliknuté
+    }
+
+    // Počkaj na hlavný článok
+    await page.waitForSelector("h1", { timeout: 10000 });
 
     const data = await page.evaluate(() => {
-      const title = document.querySelector("h1.main-title")?.innerText || "";
-      const paragraphs = Array.from(document.querySelectorAll(".main-article p"));
+      const title = document.querySelector("h1")?.innerText || "";
+      const paragraphs = Array.from(document.querySelectorAll("article p"));
       const content = paragraphs.map(p => p.innerText).join("\n\n");
       return {
         title: title.trim(),
@@ -34,7 +40,7 @@ app.post("/scrape", async (req, res) => {
     await browser.close();
     res.json({ url, ...data });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Scraper error:", err);
     res.status(500).json({ error: "Scraping error", details: err.message });
   }
 });
