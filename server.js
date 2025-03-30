@@ -1,5 +1,6 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -11,12 +12,12 @@ app.get("/", (req, res) => {
 
 app.post("/scrape", async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "Missing URL in request body" });
+  if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
     const browser = await puppeteer.launch({
       headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
