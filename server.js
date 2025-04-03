@@ -1,86 +1,79 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-const cors = require("cors");
+const bodyParser = require("body-parser");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(bodyParser.json());
 
-app.get("/", (req, res) => {
-  res.send("✅ Puppeteer scraper server beží.");
-});
+app.post("/medscape", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Missing email or password" });
+  }
 
-// 🆕 Medscape scraper s loginom
-app.get("/medscape", async (req, res) => {
-  let browser;
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
   try {
-    console.log("[🚀] Spúšťam Puppeteer pre Medscape...");
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
     const page = await browser.newPage();
+    await page.goto("https://login.medscape.com/login/sso/getlogin");
 
-    // Prihlásenie na Medscape
-    await page.goto("https://login.medscape.com/login/sso/getlogin", {
-      waitUntil: "networkidle2",
-    });
-    await page.type("#userId", "ighi@pm.me", { delay: 50 });
-    await page.type("#password", "JCZ9vpj3tky5hza-txc", { delay: 50 });
-    await Promise.all([
-      page.click("button[type='submit']"),
-      page.waitForNavigation({ waitUntil: "networkidle2" }),
-    ]);
-    console.log("[🔐] Prihlásený do Medscape");
+    await page.waitForSelector("#userId");
+    await page.type("#userId", email);
+    await page.type("#password", password);
+    await page.click("#loginbtn");
 
-    // Načítanie sekcie noviniek
-    await page.goto("https://www.medscape.com/index/list_13470_0", {
-      waitUntil: "networkidle2",
-    });
-    console.log("[📥] Načítaná stránka s novinkami");
+    await page.waitForNavigation({ waitUntil: "networkidle2" });
 
-    // Výber článkov
-    const articles = await page.evaluate(() => {
-      const links = document.querySelectorAll(".headline > a");
-      return Array.from(links).map((link) => ({
-        title: link.innerText.trim(),
-        url: link.href,
-      }));
-    });
+    await page.goto("https://www.medscape.com/index/list_12253_0");
 
-    console.log(`[✅] Nájdených článkov: ${articles.length}`);
-
-    const results = [];
-
-    for (const article of articles.slice(0, 5)) {
-      await page.goto(article.url, { waitUntil: "networkidle2" });
-      const content = await page.evaluate(() => {
-        const paras = document.querySelectorAll(".article-body p");
-        return Array.from(paras).map((p) => p.innerText.trim()).join("\n");
-      });
-
-      results.push({
-        title: article.title,
-        url: article.url,
-        content,
-      });
-
-      console.log(`[🧾] Načítaný článok: ${article.title}`);
+    // Zavrieť popup ak existuje
+    try {
+      await page.waitForSelector(".modalClose", { timeout: 5000 });
+      await page.click(".modalClose");
+    } catch (err) {
+      console.log("Popup nebol zobrazený");
     }
 
+    // Extrakcia článkov
+    const articles = await page.evaluate(() => {
+      const articleElements = document.querySelectorAll(".column2 .doc-info");
+      const data = [];
+      articleElements.forEach(el => {
+        const titleEl = el.querySelector("a.title");
+        const descEl = el.querySelector(".doc-description");
+        const dateEl = el.querySelector(".doc-source");
+
+        if (titleEl && descEl) {
+          data.push({
+            title: titleEl.innerText.trim(),
+            url: "https://www.medscape.com" + titleEl.getAttribute("href"),
+            description: descEl.innerText.trim(),
+            date: dateEl ? dateEl.innerText.trim() : null
+          });
+        }
+      });
+      return data;
+    });
+
     await browser.close();
-    console.log("[🟢] Puppeteer zatvorený. Výstup odoslaný.");
-    res.json(results);
-  } catch (error) {
-    console.error("[❌] Chyba počas scrapovania Medscape:", error.message);
-    if (browser) await browser.close();
-    res.status(500).json({ error: error.message });
+    res.json(articles);
+
+  } catch (err) {
+    await browser.close();
+    console.error("Scraping failed:", err);
+    res.status(500).json({ error: "Scraping failed", details: err.message });
   }
 });
 
-// Spustenie servera
+app.get("/", (req, res) => {
+  res.send("Medscape scraper API beží.");
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Scraper API beží na porte ${PORT}`);
+  console.log(`✅ Server beží na porte ${PORT}`);
 });
