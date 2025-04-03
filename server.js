@@ -1,48 +1,42 @@
-const express = require("express");
-const puppeteer = require("puppeteer");
-const cors = require("cors");
+const express = require('express');
+const puppeteer = require('puppeteer');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
-app.post("/scrape", async (req, res) => {
-  const { url } = req.body;
-
-  if (!url) {
-    return res.status(400).json({ error: "Missing URL" });
-  }
-
-  let browser;
+// ✨ NOVÝ ENDPOINT PRE MNT
+app.get('/mnt', async (req, res) => {
   try {
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    const browser = await puppeteer.launch({
+      headless: "new", // alebo true
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto('https://www.medicalnewstoday.com/', { waitUntil: 'networkidle2' });
 
-    // 👇 Namiesto waitForTimeout použijeme JS setTimeout
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Príklad extrakcie obsahu (prispôsob si podľa potreby)
-    const title = await page.title();
-    const content = await page.evaluate(() => {
-      const body = document.querySelector(".article-body") || document.querySelector(".content") || document.body;
-      return body ? body.innerText.trim() : "";
+    // Získanie článkov z úvodnej stránky (uprav podľa štruktúry stránky)
+    const articles = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('a.card')) || [];
+      return items.map(item => ({
+        title: item.querySelector('h3')?.innerText || 'Bez nadpisu',
+        url: item.href,
+        content: item.innerText,
+      }));
     });
 
     await browser.close();
-
-    res.json({ url, title, content });
-  } catch (error) {
-    if (browser) await browser.close();
-    res.status(500).json({ error: "❌ Chyba pri scrapovaní", details: error.message });
+    res.json(articles);
+  } catch (err) {
+    console.error('❌ Chyba pri scrapovaní MNT:', err);
+    res.status(500).json({ error: 'Scraping failed' });
   }
 });
 
-const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => {
+  res.send('✅ Scraper API beží!');
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Server beží na porte ${PORT}`);
 });
