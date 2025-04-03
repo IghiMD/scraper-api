@@ -1,27 +1,22 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ✨ NOVÝ ENDPOINT PRE MNT
 app.get('/mnt', async (req, res) => {
   try {
     const browser = await puppeteer.launch({
-      headless: "new", // alebo true
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-    await page.goto('https://www.medicalnewstoday.com/', { waitUntil: 'networkidle2' });
+    await page.goto('https://www.medicalnewstoday.com/', { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Získanie článkov z úvodnej stránky (uprav podľa štruktúry stránky)
+    // Počkaj kým sa načítajú články – definujeme bezpečný selektor
+    await page.waitForSelector('a.card', { timeout: 10000 });
+
     const articles = await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('a.card')) || [];
       return items.map(item => ({
         title: item.querySelector('h3')?.innerText || 'Bez nadpisu',
         url: item.href,
-        content: item.innerText,
+        content: item.innerText || ''
       }));
     });
 
@@ -29,14 +24,6 @@ app.get('/mnt', async (req, res) => {
     res.json(articles);
   } catch (err) {
     console.error('❌ Chyba pri scrapovaní MNT:', err);
-    res.status(500).json({ error: 'Scraping failed' });
+    res.status(500).json({ error: 'Scraping failed', detail: err.message });
   }
-});
-
-app.get('/', (req, res) => {
-  res.send('✅ Scraper API beží!');
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server beží na porte ${PORT}`);
 });
