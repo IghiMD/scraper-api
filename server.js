@@ -1,69 +1,56 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
 const bodyParser = require("body-parser");
+const puppeteer = require("puppeteer");
 
 const app = express();
+const port = process.env.PORT || 3000;
+
 app.use(bodyParser.json());
 
-app.post("/medscape", async (req, res) => {
-  const { email, password } = req.body;
+app.get("/", (req, res) => {
+  res.send("✅ Scraper API beží!");
+});
 
-  if (!email || !password) {
-    return res.status(400).json({ error: "Missing credentials" });
+app.post("/scrape", async (req, res) => {
+  const { url } = req.body;
+
+  if (!url) {
+    return res.status(400).json({ error: "URL is required" });
   }
 
-  let browser;
-
   try {
-    browser = await puppeteer.launch({
-      headless: true,
+    const browser = await puppeteer.launch({
+      headless: "new",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
+    );
 
-    // 1. Načítaj login stránku
-    await page.goto("https://login.medscape.com/login/sso/getlogin");
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // 2. Vyplň login formulár
-    await page.waitForSelector('input[name="email"]');
-    await page.type('input[name="email"]', email);
+    // Prípadne odklikni cookies alebo popup (ak poznáme selektor)
+    // await page.click('#acceptButton')
 
-    await page.waitForSelector('input[name="password"]');
-    await page.type('input[name="password"]', password);
-
-    // 3. Klikni na login button
-    await page.click('button[type="submit"]');
-
-    // 4. Počkaj na redirect po logine
-    await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 });
-
-    // 5. Choď na anestéziologickú sekciu (napr.)
-    await page.goto("https://www.medscape.com/index/list_12253_0", {
-      waitUntil: "domcontentloaded",
+    const pageContent = await page.evaluate(() => {
+      return {
+        title: document.title,
+        html: document.body.innerHTML,
+        text: document.body.innerText,
+      };
     });
 
-    // 6. Získaj zoznam článkov
-    const articles = await page.evaluate(() => {
-      const nodes = document.querySelectorAll(".column-headline a");
-      return Array.from(nodes).map(node => ({
-        title: node.innerText.trim(),
-        url: node.href
-      }));
-    });
+    await browser.close();
 
-    res.json(articles);
-
-  } catch (error) {
-    console.error("[❌ Scraper Error]", error.message);
-    res.status(500).json({ error: "Scraping failed", details: error.message });
-  } finally {
-    if (browser) await browser.close();
+    res.json({ success: true, data: pageContent });
+  } catch (err) {
+    console.error("❌ Scraping error:", err);
+    res.status(500).json({ error: "Scraping failed", details: err.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server beží na porte ${PORT}`);
+app.listen(port, () => {
+  console.log(`🚀 Server beží na porte ${port}`);
 });
